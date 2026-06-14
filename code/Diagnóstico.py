@@ -1,5 +1,5 @@
 # %% [markdowon]
-# Curso de CNN con PyTorch
+# ### Curso de CNN con PyTorch
 ## Creando nuestro propio Clasificador de Imágenes 👀😷
 
 from IPython.display import display, Markdown
@@ -241,36 +241,65 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
     model.load_state_dict(best_model_wts)
     return model
+# %% [markdown]
+# ### Capítulo 7: Función de Visualización de 6 Imágenes de Validación🔍
+def visualize_model(model, num_images=6):
+    was_training = model.training
+    model.eval()
+    images_so_far = 0
+    fig = plt.figure()
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(dataloaders['val']):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+
+            for j in range(inputs.size()[0]):
+                images_so_far += 1
+                ax = plt.subplot(num_images//2, 2, images_so_far)
+                ax.axis('off')
+                ax.set_title('predicted: {}'.format(class_names[preds[j]]))
+                imshow(inputs.cpu().data[j])
+
+                if images_so_far == num_images:
+                    model.train(mode=was_training)
+                    return
+        model.train(mode=was_training)
 
 # %% [markdown]
-# ### Capítulo 7: Ejecución del Entrenamiento y Guardado 💾
+# ### Capítulo 8: Ejecución del Entrenamiento y Guardado 💾
 # Instanciamos la función de pérdida (CrossEntropy), el optimizador (SGD) y el planificador de tasa de aprendizaje.
 
 # %%
-# --- 7.1 Configuración de Hiperparámetros ---
+# --- 8.1 Configuración de Hiperparámetros ---
 criterion = nn.CrossEntropyLoss()
 optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-# --- 7.2 Lanzamiento del Entrenamiento ---
+# --- 8.2 Lanzamiento del Entrenamiento ---
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=5)
 
-# --- 7.3 Persistencia del Modelo ---
+# --- 8.3 Persistencia del Modelo ---
 torch.save(model_ft, "model.pth")
 print("💾 Modelo guardado exitosamente como 'model.pth'")
-
 # %% [markdown]
-# ### Capítulo 8: Inferencia en Producción 🤙
+# ### Capítulo 9: Visualización de 6 Imágenes de Validación
+visualize_model(model_ft)
+# %% [markdown]
+# ### Capítulo 10: Inferencia en Producción 🤙
 # Simulamos cómo se utilizaría el modelo ya entrenado para diagnosticar nuevas radiografías individuales.
 
 # %%
-# --- 8.1 Carga del Modelo Entrenado ---
+# --- 10.1 Carga del Modelo Entrenado ---
 mi_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 mi_modelo = torch.load("model.pth", map_location=mi_device, weights_only=False)
 mi_modelo.eval() # Modo inferencia
 mi_modelo.to(mi_device)
 
-# --- 8.2 Función Desacoplada de Predicción ---
+# --- 10.2 Función Desacoplada de Predicción ---
 def predict_image(image_path, model, class_names, device):
     """
     Recibe la ruta física de una imagen, aplica el preprocesamiento exacto 
