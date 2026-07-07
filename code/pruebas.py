@@ -1,43 +1,125 @@
 # %%
 
+import os
+# 1. CONFIGURACIÓN DEL BACKEND (Debe ir antes de importar Keras)
+os.environ["KERAS_BACKEND"] = "torch"
+
 import numpy as np
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+import tensorflow as tf
+import keras
+from keras import layers
 
-def evaluar_rendimiento_clinico(etiquetas_reales, logits_predichos, clases):
+# Configuración de hiperparámetros y constantes de hardware
+BATCH_SIZE = 16
+IMG_SIZE = 224
+
+# Activamos la constante adaptativa de hardware
+AUTOTUNE = tf.data.AUTOTUNE
+
+print(f"Ecosistema Keras 3 corriendo sobre el backend de: {keras.config.backend()}\n")
+
+
+# =====================================================================
+# 1. SIMULACIÓN DE RUTAS DE ARCHIVOS EN DISCO Y ETIQUETAS (Train, Val, Test)
+# =====================================================================
+# Generamos metadatos ficticios separados para cada conjunto
+rutas_train = [f"/sistema/train_imagen_{i}.png" for i in range(64)]
+etiquetas_train = np.random.randint(0, 2, size=(64, 1)).astype(np.float32)
+
+rutas_val = [f"/sistema/val_imagen_{i}.png" for i in range(16)]
+etiquetas_val = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
+
+rutas_test = [f"/sistema/test_imagen_{i}.png" for i in range(16)]
+etiquetas_test = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
+
+
+# =====================================================================
+# 2. FUNCIÓN LÓGICA DE CARGA EN CPU
+# =====================================================================
+def simular_lectura_disco(ruta, etiqueta):
     """
-    Calcula e imprime las métricas de clasificación estándar de la industria.
+    Simula la lectura física del almacenamiento (ej. OpenCV, PIL o PyDicom).
+    Se ejecuta en la CPU de forma multihilo gracias a la infraestructura de tf.data.
     """
-    # Transformar logits a probabilidades mediante sigmoide (asumiendo caso binario)
-    probabilidades = 1 / (1 + np.exp(-logits_predichos))
+    def _leer():
+        # Aquí simularías la apertura real del archivo basado en el parámetro 'ruta'
+        return np.random.rand(IMG_SIZE, IMG_SIZE, 3).astype(np.float32)
+    
+    imagen_cargada = tf.py_function(_leer, [], tf.float32)
+    imagen_cargada.set_shape([IMG_SIZE, IMG_SIZE, 3])
+    return imagen_cargada, etiqueta
 
-    # Asignar clase basándose en el umbral estándar de 0.5
-    predicciones_binarias = (probabilidades >= 0.5).astype(int)
 
-    # 1. Generar Matriz de Confusión
-    matriz = confusion_matrix(etiquetas_reales, predicciones_binarias)
-    vn, fp, fn, vp = matriz.ravel()
+# =====================================================================
+# 3. CONSTRUCCIÓN DE PIPELINES ULTRA-OPTIMIZADOS CON AUTOTUNE
+# =====================================================================
 
-    # 2. Calcular AUC-ROC
-    auc_score = roc_auc_score(etiquetas_reales, probabilidades)
+# --- DATASET DE ENTRENAMIENTO ---
+# Aplica el orden perfecto: Map -> Cache -> Shuffle -> Batch -> Prefetch
+train_ds = tf.data.Dataset.from_tensor_slices((rutas_train, etiquetas_train))
+train_ds = (
+    train_ds
+    .map(simular_lectura_disco, num_parallel_calls=AUTOTUNE)
+    .cache()
+    .shuffle(buffer_size=64)  # Ajustado al tamaño de este set para aleatoriedad perfecta
+    .batch(BATCH_SIZE)
+    .prefetch(buffer_size=AUTOTUNE)
+)
 
-    # 3. Desplegar Reporte Estructurado en Consola
-    print("==================================================")
-    print("🔬 REPORTE DE EVALUACIÓN CLÍNICA DEL MODELO")
-    print("==================================================")
-    print(f"Matriz de Confusión Estructural:")
-    print(f"  [VN: {vn}]   [FP: {fp}]")
-    print(f"  [FN: {fn}]   [VP: {vp}]\n")
+# --- DATASET DE VALIDACIÓN ---
+# Mismo flujo pero SIN SHUFFLE para evitar inestabilidades visuales en las métricas
+val_ds = tf.data.Dataset.from_tensor_slices((rutas_val, etiquetas_val))
+val_ds = (
+    val_ds
+    .map(simular_lectura_disco, num_parallel_calls=AUTOTUNE)
+    .cache()
+    .batch(BATCH_SIZE)
+    .prefetch(buffer_size=AUTOTUNE)
+)
 
-    print("Métricas de Forma Detallada:")
-    print(classification_report(etiquetas_reales, predicciones_binarias, target_names=clases))
-    print(f"Área Bajo la Curva (AUC-ROC): {auc_score:.4f}")
-    print("==================================================")
+# --- DATASET DE TESTING ---
+# Mismo flujo estricto SIN SHUFFLE para no romper el mapeo de la Matriz de Confusión
+test_ds = tf.data.Dataset.from_tensor_slices((rutas_test, etiquetas_test))
+test_ds = (
+    test_ds
+    .map(simular_lectura_disco, num_parallel_calls=AUTOTUNE)
+    .cache()
+    .batch(BATCH_SIZE)
+    .prefetch(buffer_size=AUTOTUNE)
+)
 
-    return vn, fp, fn, vp, auc_score
 
-# --- Simulación de un lote de evaluación de 10 pacientes ---
-#0 = NORMAL
-#1 = PNEUMONIA
-targets = np.array([0, 1, 0, 0, 1, 1, 0, 1, 0, 1])
-outputs = np.array([-2.1, 3.4, -0.5, -1.2, 0.1, 4.2, -3.1, -0.2, -1.1, 2.5])
-evaluar_rendimiento_clinico(targets, outputs, ['NORMAL', 'PNEUMONIA'])
+# =====================================================================
+# 4. RED NEURONAL DE VERIFICACIÓN (Channels Last por defecto)
+# =====================================================================
+modelo_rendimiento = keras.Sequential([
+    layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3)),
+    layers.Conv2D(16, kernel_size=3, activation="relu"),
+    layers.MaxPooling2D(pool_size=2),
+    layers.Flatten(),
+    layers.Dense(1, activation="sigmoid")
+])
+
+modelo_rendimiento.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+    loss=keras.losses.BinaryCrossentropy(),
+    metrics=[keras.metrics.BinaryAccuracy(name="accuracy")]
+)
+
+modelo_rendimiento.summary()
+
+
+# =====================================================================
+# 5. EJECUCIÓN DEL ENTRENAMIENTO Y EVALUACIÓN FINAL
+# =====================================================================
+print("\n--- Iniciando Entrenamiento Optimizado con AUTOTUNE ---")
+# Pasamos train_ds y val_ds de forma directa. Las etiquetas ya van integradas.
+
+modelo_rendimiento.fit(
+    train_ds,
+    validation_data=val_ds,
+    epochs=3
+)
+
+print("\n--- Iniciando Evaluación Final con el Set de Testing (Orden Conservado) ---")
+metricas_test = modelo_rendimiento.evaluate(test_ds)
