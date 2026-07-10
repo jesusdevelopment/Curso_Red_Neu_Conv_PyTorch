@@ -1,4 +1,4 @@
-# %% [markdown]
+ # %% [markdown]
 ## Importación de Bibliotecas y Configuración de Entorno
 !pip install imagehash
 !pip install --upgrade keras  # Aseguramos tener Keras 3+
