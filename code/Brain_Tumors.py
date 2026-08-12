@@ -196,6 +196,7 @@ print(f"Proporción de entrenamiento: {total_train / (total_train + total_test):
 print(f"Proporción de prueba: {total_test / (total_train + total_test):.2f}")
 
 # 5.5 Análisis de Intensidad de Píxeles
+# 5.5 Análisis de Intensidad de Píxeles (Corregido)
 def analizar_intensidades(extract_dir, sets=['Training', 'Testing'], sample_size=300):
     plt.figure(figsize=(12, 6))
     colores = {'Training': 'blue', 'Testing': 'orange'}
@@ -206,19 +207,28 @@ def analizar_intensidades(extract_dir, sets=['Training', 'Testing'], sample_size
         all_files = []
         for root, dirs, files in os.walk(dataset_path):
             for file in files:
-                if file.endswith('.jpg'):
+                # Permite imágenes .png, .jpeg y .jpg
+                if file.lower().endswith(('.jpg', '.jpeg', '.png')):
                     all_files.append(os.path.join(root, file))
         
+        if not all_files:
+            print(f"⚠️ No se encontraron imágenes en: {dataset_path}")
+            continue
+
         sampled_files = random.sample(all_files, min(sample_size, len(all_files)))
-        hist_acumulado = np.zeros((256, 1))
+        hist_acumulado = np.zeros(256) # Array 1D de forma (256,)
         
         for img_path in sampled_files:
             img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
             if img is not None:
-                hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+                # .ravel() aplana el resultado a un vector 1D de (256,)
+                hist = cv2.calcHist([img], [0], None, [256], [0, 256]).ravel()
                 hist_acumulado += hist
-                
-        hist_acumulado /= hist_acumulado.sum()
+        
+        total_pixels = hist_acumulado.sum()
+        if total_pixels > 0:
+            hist_acumulado /= total_pixels
+
         plt.plot(hist_acumulado, color=colores[dataset_type], label=f'{dataset_type} (n={len(sampled_files)})', alpha=0.8)
 
     plt.title('Distribución de Intensidades de Píxel: Training vs. Testing')
